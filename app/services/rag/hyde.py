@@ -4,17 +4,15 @@ from atomic_agents.context import SystemPromptGenerator
 
 from app.core.config import settings
 from app.prompts import HYDE_PROMPT, OUTPUT_INSTRUCTIONS, SYSTEM_PROMPT
-from app.repository import TelegramPostMediaRepository, TelegramPostRepository
+from app.repository import TelegramPostRepository
 from app.schemas import HyDEOutputSchema, TelegramPostSchema
 from app.services.rag.base import RAGStrategy
 from app.services.rag.embeddings import EmbeddingService
 
 
 class HyDEStrategy(RAGStrategy):
-    def __init__(
-        self, post_repository: TelegramPostRepository, post_media_repository: TelegramPostMediaRepository
-    ) -> None:
-        super().__init__(post_repository, post_media_repository)
+    def __init__(self, post_repository: TelegramPostRepository) -> None:
+        super().__init__(post_repository)
         self.agent_config = AgentConfig(
             client=instructor.from_provider(
                 model=settings.rag.llm_model,
@@ -32,9 +30,8 @@ class HyDEStrategy(RAGStrategy):
     async def retrieve(self, query: str, media: bytes | None = None) -> list[TelegramPostSchema]:
         hypothetical_document = await self.create_hypothetical_document(query)
         embedding_text = await EmbeddingService.embed_text(hypothetical_document)
-        post_embedding = await self._build_query_embedding(embedding_text, media)
 
-        posts = await self.post_repository.find_by_embedding(post_embedding.tolist())
+        posts = await self.post_repository.find_by_embedding(embedding_text.tolist())
         return await self._to_post_schemas(posts)
 
     async def create_hypothetical_document(self, query: str) -> str:

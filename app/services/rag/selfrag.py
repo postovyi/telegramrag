@@ -4,17 +4,15 @@ from atomic_agents.context import SystemPromptGenerator
 
 from app.core.config import settings
 from app.prompts import OUTPUT_INSTRUCTIONS, SELF_RAG_PROMPT, SYSTEM_PROMPT
-from app.repository import TelegramPostMediaRepository, TelegramPostRepository
+from app.repository import TelegramPostRepository
 from app.schemas import SelfRAGOutputSchema, TelegramPostSchema
 from app.services.rag.base import RAGStrategy
 from app.services.rag.embeddings import EmbeddingService
 
 
 class SelfRAGStrategy(RAGStrategy):
-    def __init__(
-        self, post_repository: TelegramPostRepository, post_media_repository: TelegramPostMediaRepository
-    ) -> None:
-        super().__init__(post_repository, post_media_repository)
+    def __init__(self, post_repository: TelegramPostRepository) -> None:
+        super().__init__(post_repository)
         self.agent_config = AgentConfig(
             client=instructor.from_provider(
                 model=settings.rag.llm_model,
@@ -35,7 +33,6 @@ class SelfRAGStrategy(RAGStrategy):
         )
 
         embedding_text = await EmbeddingService.embed_text(refined_query.query)
-        post_embedding = await self._build_query_embedding(embedding_text, media)
 
-        posts = await self.post_repository.find_by_embedding(post_embedding.tolist())
+        posts = await self.post_repository.find_by_embedding(embedding_text.tolist())
         return await self._to_post_schemas(posts)
