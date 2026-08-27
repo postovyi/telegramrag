@@ -42,17 +42,18 @@ class TelegramService:
 
     async def get_post(self, post_id: UUID) -> TelegramPostSchema:
         post = await self.post_repository.get_one(id=post_id)
+        channel = await self.channel_repository.get_one(id=post.channel_id)
 
         return TelegramPostSchema(
             id=post.id,
             content=post.content,
             posted_at=post.posted_at,
-            channel_url=post.channel.url,
+            channel_url=channel.url,
             url=post.url
         )
 
     async def get_channels(self) -> list[TelegramChannelSchema]:
-        channels = await self.channel_repository.get_all()
+        channels = await self.channel_repository.get_multi(0, None)
         return [TelegramChannelSchema.model_validate(channel, extra="ignore") for channel in channels]
 
 
@@ -78,7 +79,14 @@ class TelegramService:
                         embedding=await EmbeddingService.embed_image(media.content)
                     )
                 )
-        return TelegramPostSchema.model_validate(post, extra="ignore")
+        channel = await self.channel_repository.get_one(id=post.channel_id)
+        return TelegramPostSchema(
+            id=db_post.id,
+            content=db_post.content,
+            posted_at=db_post.posted_at,
+            channel_url=channel.url,
+            url=db_post.url,
+        )
 
     async def _get_or_create_channel(self, channel: CreateTelegramChannelSchema) -> TelegramChannel:
         existing = await self.channel_repository.get_one_or_none(username=channel.username)
