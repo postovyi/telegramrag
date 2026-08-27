@@ -1,6 +1,6 @@
+from .rag import HyDEOutputSchema, RAGInputSchema, SelfRAGOutputSchema
 from .telegram import (
     CreateTelegramChannelSchema,
-    CreateTelegramPostMediaSchema,
     CreateTelegramPostSchema,
     PyrogramImportChannelsSchema,
     PyrogramImportPostsSchema,
@@ -8,25 +8,20 @@ from .telegram import (
     TelegramChannelSchema,
     TelegramMedia,
     TelegramPostInputSchema,
-    TelegramPostMediaInputSchema,
     TelegramPostSchema,
 )
-from .rag import HyDEOutputSchema, SelfRAGOutputSchema, RAGInputSchema
-
 
 __all__ = [
-    "CreateTelegramChannelSchema",
-    "CreateTelegramPostMediaSchema",
-    "CreateTelegramPostSchema",
-    "PyrogramImportChannelsSchema",
-    "PyrogramImportPostsSchema",
-    "ScrapedTelegramPostSchema",
-    "TelegramChannelSchema",
-    "TelegramMedia",
-    "TelegramPostInputSchema",
-    "TelegramPostMediaInputSchema",
-    "TelegramPostSchema",
-    "HyDEOutputSchema",
-    "SelfRAGOutputSchema",
-    "RAGInputSchema",
+    'CreateTelegramChannelSchema',
+    'CreateTelegramPostSchema',
+    'HyDEOutputSchema',
+    'PyrogramImportChannelsSchema',
+    'PyrogramImportPostsSchema',
+    'RAGInputSchema',
+    'ScrapedTelegramPostSchema',
+    'SelfRAGOutputSchema',
+    'TelegramChannelSchema',
+    'TelegramMedia',
+    'TelegramPostInputSchema',
+    'TelegramPostSchema',
 ]

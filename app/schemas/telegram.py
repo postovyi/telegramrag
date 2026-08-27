@@ -24,12 +24,6 @@ class TelegramPostSchema(BaseModel):
     channel_url: str
     url: str
 
-class TelegramPostMediaSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    post_id: UUID
-
-
 class ScrapedTelegramPostSchema(BaseModel):
     content: str | None = None
     posted_at: datetime
@@ -50,14 +44,7 @@ class CreateTelegramPostSchema(BaseModel):
     url: str
     media: list[TelegramMedia] | None = None
 
-class CreateTelegramPostMediaSchema(TelegramPostMediaSchema):
-    pass
-
-
 class TelegramPostInputSchema(CreateTelegramPostSchema):
-    embedding: list[float]
-
-class TelegramPostMediaInputSchema(CreateTelegramPostMediaSchema):
     embedding: list[float]
 
 
