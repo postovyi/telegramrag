@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from types import TracebackType
 
 from pyrogram import Client, enums
+from pyrogram.raw.functions.contacts import Search
+from pyrogram.raw.types import Channel as RawChannel
 from pyrogram.types import Chat, Message
 
 from app.core.config import settings
@@ -45,13 +47,26 @@ class PyrogramService:
         await self.client.stop()
 
     async def search_channels(self, keywords: str, limit: int = 10) -> list[CreateTelegramChannelSchema]:
-        """Search Telegram channels whose title or username matches ``keywords``."""
-        chats: list[Chat] = await self.client.search_chats(keywords, limit=limit)
-        return [
-            self._to_channel_schema(chat)
-            for chat in chats
-            if chat.type == enums.ChatType.CHANNEL and chat.username
-        ]
+        """Globally search public Telegram channels whose title or username matches ``keywords``.
+
+        Uses the raw ``contacts.search`` API instead of ``search_global``/``search_chats``,
+        which are limited to chats the account is already a member of.
+        """
+        found = await self.client.invoke(Search(q=keywords, limit=limit))
+
+        channels: list[CreateTelegramChannelSchema] = []
+        for chat in found.chats:
+            if not isinstance(chat, RawChannel) or not chat.broadcast or not chat.username:
+                continue
+            channels.append(
+                CreateTelegramChannelSchema(
+                    name=chat.title,
+                    username=chat.username,
+                    url=f"https://t.me/{chat.username}",
+                )
+            )
+
+        return channels
 
     async def get_channel(self, username: str) -> CreateTelegramChannelSchema:
         """Fetch a single channel's info by username/link."""
@@ -71,6 +86,8 @@ class PyrogramService:
         ``end_date`` and stops once a message older than ``start_date`` is reached.
         """
         posts: list[ScrapedTelegramPostSchema] = []
+        start_date = start_date.astimezone(timezone.utc).replace(tzinfo=None)
+        end_date = end_date.astimezone(timezone.utc).replace(tzinfo=None)
 
         async for message in self.client.get_chat_history(channel, offset_date=end_date):
             if message.date is None:
@@ -101,7 +118,7 @@ class PyrogramService:
         username = self._resolve_username(message, channel)
         media: list[TelegramMedia] = []
 
-        if download_media and message.media is not None:
+        if download_media and message.photo is not None:
             buffer = await self.client.download_media(message, in_memory=True)
             if isinstance(buffer, BytesIO):
                 media.append(TelegramMedia(content=buffer.getvalue()))
