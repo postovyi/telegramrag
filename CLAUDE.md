@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-FastAPI service that scrapes Telegram channels/posts (via Pyrofork), embeds them (text + image via
+FastAPI service that scrapes Telegram channels/posts (via Pyrofork), embeds post text (via `BAAI/bge-m3` through
 sentence-transformers), stores them in Postgres/pgvector, and retrieves relevant posts through RAG strategies
-(HyDE, Self-RAG) built on `atomic-agents` + `instructor`, backed by a configurable LLM (default `ollama/gemma4`).
+(`naive`, HyDE, Self-RAG) — HyDE/Self-RAG built on `atomic-agents` + `instructor`, backed by a configurable LLM
+(default `ollama/gemma4`). Image embedding was removed (see Gotchas) — media is scraped but not embedded/searched.
 
 ## Commands
 
@@ -37,34 +38,44 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
 - `app/api/dependencies.py` — wires up the DI graph per-request: opens a DB session/transaction (`get_db`),
   constructs repositories, and builds services (`TelegramService`, `TelegramRAGService`). This is the place to
   look to see how everything is actually assembled. Also holds the singleton `PyrogramService` instance (one
-  Telegram client/session reused across requests) and the `RAG_STRATEGY` switch (`hyde` vs `selfrag`) that picks
-  which `RAGStrategy` implementation `TelegramRAGService` gets.
+  Telegram client/session reused across requests) and the `RAG_STRATEGY` switch (`hyde` / `selfrag` / default
+  `naive`) that picks which `RAGStrategy` implementation `TelegramRAGService` gets.
 - `app/services/telegram.py` — `TelegramService` (CRUD + Pyrogram-backed import of channels/posts) and
   `TelegramRAGService` (thin wrapper delegating `retrieve()` to whichever `RAGStrategy` it was given).
 - `app/services/pyrogram.py` — `PyrogramService`, a persistence-free wrapper around Pyrofork for scraping
   channels/posts; used as an async context manager (`__aenter__`/`__aexit__` start/stop the client). Returns
-  plain schemas that map onto `TelegramService` create inputs — no DB access here.
-- `app/services/rag/` — RAG strategies implementing the `RAGStrategy` protocol (`base.py`): `hyde.py` generates a
-  hypothetical document via an LLM agent then embeds/searches on it; `selfrag.py` refines the query via an LLM
-  agent first. Both combine text + (optional) image embeddings before calling
-  `TelegramPostRepository.find_by_embedding`. `embeddings.py` holds `EmbeddingService`, a thin wrapper around a
-  single shared `SentenceTransformer` instance for text/image embedding.
+  plain schemas that map onto `TelegramService` create inputs — no DB access here. Channel search
+  (`search_channels`) uses the raw `contacts.search` Telegram API, not `search_global`/`search_chats` — those
+  only search chats the account already belongs to.
+- `app/services/rag/` — `RAGStrategy` base class (`base.py`) holds shared helpers (`_to_post_schemas`, channel
+  URL resolution). Three concrete strategies: `naive.py` (default — embeds the raw query directly, no LLM call),
+  `hyde.py` (LLM generates a hypothetical document, embeds that), `selfrag.py` (LLM refines the query first).
+  All call `TelegramPostRepository.find_by_embedding` (pgvector cosine distance, ascending = most similar first).
+  `embeddings.py` holds `EmbeddingService`, a thin wrapper around a shared `SentenceTransformer` (text only —
+  no image embedding).
 - `app/repository/base.py` — generic `SQLAlchemyRepository[ModelType]` used by all repositories. Filtering uses
   Django-style kwargs: `field__op=value` (e.g. `posted_at__ge=...`), where `op` maps through `action_map` to a
   SQLAlchemy column method (`gt`, `lt`, `ge`, `le`, `in`, `contains`, `eq`, `ne`); a bare `field=value` implies
   `__eq`. `get_multi(offset, limit, **filters)` takes `offset`/`limit` as positional-only; `limit=None` returns
-  all matching rows unpaginated.
-- `app/repository/telegram.py` — concrete repositories; `TelegramPostRepository`/`TelegramPostMediaRepository`
-  add `find_by_embedding()` (pgvector cosine-distance ordering, capped at `settings.rag.top_k`).
-- `app/models/` — SQLAlchemy declarative models (`TelegramChannel`, `TelegramPost`, `TelegramPostMedia`), all
-  UUID-keyed via `BaseId`. Posts and media store `pgvector` `Vector` columns sized by `settings.rag.embedding_n_dim`.
+  all matching rows unpaginated. `create()` filters the input dict down to the model's actual table columns
+  before `insert().values()` — passing extra fields (e.g. from a schema with unrelated fields) silently corrupts
+  the generated SQL otherwise.
+- `app/repository/telegram.py` — `TelegramPostRepository.find_by_embedding()` (pgvector cosine-distance
+  ascending, capped at `settings.rag.top_k`).
+- `app/models/` — SQLAlchemy declarative models (`TelegramChannel`, `TelegramPost`), UUID-keyed via `BaseId`.
+  `TelegramPost.embedding` is a `pgvector` `Vector` column sized by `settings.rag.embedding_n_dim` (1024 for
+  `bge-m3`). There is no media/image table — removed along with image embedding.
 - `app/schemas/` — Pydantic schemas, split between DB-facing (`TelegramPostInputSchema`, etc.), API-facing
   (`TelegramPostSchema`, `CreateTelegramChannelSchema`, ...), and Pyrogram-scraping schemas
-  (`ScrapedTelegramPostSchema`, `PyrogramImportChannelsSchema`, ...).
+  (`ScrapedTelegramPostSchema`, `PyrogramImportChannelsSchema`, ...). API-facing schemas need
+  `model_config = ConfigDict(from_attributes=True)` to validate directly from ORM objects.
 - `app/core/config/` — one `pydantic-settings` class per concern (`db.py`, `rag.py`, `telegram.py`), all reading
   from `.env`, aggregated into a single `settings` singleton in `settings.py`.
-- `alembic/` — migrations; `env.py` pulls the DB URL from `settings.db.database_url` and metadata from
-  `app.models.Base`, so `.env` must be populated before running alembic commands.
+- `alembic/` — migrations run on the async engine (`async_engine_from_config` + `connection.run_sync`, not a
+  sync `engine_from_config`) since the DB URL is `postgresql+asyncpg://`. `env.py` pulls the URL from
+  `settings.db.database_url` and metadata from `app.models.Base`, so `.env` must be populated before running
+  alembic commands. History is kept squashed to a single `0001_init_telegram` migration reflecting current
+  schema — this is a solo/dev project, prefer squashing over accumulating incidental-edit migrations.
 
 ## Conventions
 
@@ -73,3 +84,28 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   run `ruff check --fix` before considering work done.
 - Repositories raise/propagate SQLAlchemy exceptions (e.g. `NoResultFound`, `IntegrityError`) directly; it's the
   API layer's job to catch and convert them to HTTP responses, not the service layer's.
+
+## Docker / dev environment gotchas
+
+- `alembic/` is **not** volume-mounted into the `app` container (only `./app` is). Editing a migration file on
+  the host has no effect inside the running container until you `docker compose cp <file> app:/app/<path>` or
+  rebuild the image.
+- Adding/removing a Python dependency requires `uv lock` on the host, then `docker compose up -d --build app`
+  (image rebuild) — `docker compose exec app uv sync` alone won't pick up a `pyproject.toml` change reliably.
+- `.env` / `.env.example` are blocked from direct file-tool access in this environment (permission-denied) —
+  ask the user to edit env values themselves.
+- Ollama running on the host is reachable from the `app` container via `http://host.docker.internal:11434/v1`
+  (`LLM_BASE_URL` env var) — Linux Docker needs the explicit `extra_hosts: host.docker.internal:host-gateway`
+  entry in `docker-compose.yml`; it's not automatic like Docker Desktop.
+- `instructor.from_provider("ollama/...")` ignores `OLLAMA_API_BASE`/env vars — pass `base_url=` explicitly.
+  `atomic_agents.AgentConfig` also defaults `model=` to `"gpt-5-mini"` if not set explicitly — always pass
+  `model=settings.rag.llm_model.split("/", 1)[-1]` (or equivalent) when constructing one.
+- Any `atomic_agents.AtomicAgent` response schema must subclass `BaseIOSchema`, not plain pydantic `BaseModel` —
+  a plain `BaseModel` fails deep inside the agent's message-history validation with a confusing pydantic error.
+- `TELEGRAM_SESSION_STRING` must come from Pyrogram/Pyrofork's own `Client.export_session_string()` — a
+  Telethon-generated `StringSession` uses a different binary format and fails with a cryptic
+  `struct.error: unpack requires a buffer of N bytes`.
+- SQLAlchemy ORM relationship attributes (e.g. `post.channel`) must not be lazy-accessed under the async
+  session — raises `MissingGreenlet`. Fetch related rows explicitly (`session.get(Model, id)`).
+- pgvector `cosine_distance()`: smaller = more similar. Never `order_by(1 - cosine_distance(...))` — that sorts
+  least-similar first.
