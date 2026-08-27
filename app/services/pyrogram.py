@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from types import TracebackType
 
-from pyrogram import Client, enums
+from pyrogram import Client
 from pyrogram.raw.functions.contacts import Search
 from pyrogram.raw.types import Channel as RawChannel
 from pyrogram.types import Chat, Message
@@ -62,7 +62,7 @@ class PyrogramService:
                 CreateTelegramChannelSchema(
                     name=chat.title,
                     username=chat.username,
-                    url=f"https://t.me/{chat.username}",
+                    url=f'https://t.me/{chat.username}',
                 )
             )
 
@@ -106,7 +106,7 @@ class PyrogramService:
         return CreateTelegramChannelSchema(
             name=chat.title or chat.username,
             username=chat.username,
-            url=f"https://t.me/{chat.username}",
+            url=f'https://t.me/{chat.username}',
         )
 
     async def _to_post_schema(
@@ -127,7 +127,7 @@ class PyrogramService:
             content=message.text or message.caption,
             posted_at=message.date,
             channel_username=username,
-            url=f"https://t.me/{username}/{message.id}",
+            url=f'https://t.me/{username}/{message.id}',
             media=media,
         )
 
@@ -135,4 +135,4 @@ class PyrogramService:
     def _resolve_username(message: Message, channel: str) -> str:
         if message.chat is not None and message.chat.username:
             return message.chat.username
-        return channel.lstrip("@")
+        return channel.lstrip('@')
