@@ -1,9 +1,9 @@
 from io import BytesIO
 from typing import Any
 
+import numpy as np
 from PIL import Image
 from sentence_transformers import SentenceTransformer
-import numpy as np
 
 from app.core.config import settings
 
