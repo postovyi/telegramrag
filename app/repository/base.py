@@ -40,7 +40,7 @@ class AbstractRepository(ABC, Generic[ModelType]):
         raise NotImplementedError
 
     @abstractmethod
-    async def get_multi(self, offset: int, limit: int, **filters: Any) -> Sequence[ModelType]:
+    async def get_multi(self, offset: int, limit: int | None, **filters: Any) -> Sequence[ModelType]:
         raise NotImplementedError
 
     @abstractmethod
@@ -88,8 +88,13 @@ class SQLAlchemyRepository(AbstractRepository, Generic[ModelType]):
         statement = select(self.model).where(*self.get_where_clauses(filters))
         return await self.execute(statement=statement, action=lambda result: result.scalars().one_or_none())
 
-    async def get_multi(self, offset: int = 0, limit: int = 50, /, **filters: Any) -> Sequence[ModelType]:
-        statement = select(self.model).where(*self.get_where_clauses(filters)).offset(offset).limit(limit)
+    async def get_multi(
+        self, offset: int = 0, limit: int | None = 50, /, **filters: Any
+    ) -> Sequence[ModelType]:
+        statement = select(self.model).where(*self.get_where_clauses(filters)).offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+
         return await self.execute(statement=statement, action=lambda result: result.scalars().all())
 
     def get_where_clauses(self, filters: dict[str, Any]) -> list[ColumnClause]:
@@ -118,6 +123,8 @@ class SQLAlchemyRepository(AbstractRepository, Generic[ModelType]):
 
     async def create(self, obj_in: BaseModel | dict[str, Any]) -> ModelType:
         data = obj_in.model_dump() if isinstance(obj_in, BaseModel) else obj_in
+        columns = {column.name for column in self.model.__table__.columns}
+        data = {key: value for key, value in data.items() if key in columns}
         statement = insert(self.model).values(**data).returning(self.model)
         return await self.execute(statement=statement, action=lambda result: result.scalar_one())
 
