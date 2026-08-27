@@ -1,6 +1,10 @@
+from atomic_agents import BaseIOSchema
 from pydantic import BaseModel
 
-class HyDEOutputSchema(BaseModel):
+class HyDEOutputSchema(BaseIOSchema):
+    """
+    Use this schema for HyDE
+    """
     hypothetical_document: str
 
 class SelfRAGOutputSchema(BaseModel):

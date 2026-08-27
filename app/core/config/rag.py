@@ -7,3 +7,4 @@ class RAGConfig(BaseConfig):
     rag_strategy: str = Field(default="hyde", alias="RAG_STRATEGY")
     top_k: int = Field(default=5, alias="TOP_K")
     llm_model: str = Field(default="ollama/gemma4", alias="LLM_MODEL")
+    llm_base_url: str = Field(default="http://localhost:11434/v1", alias="LLM_BASE_URL")

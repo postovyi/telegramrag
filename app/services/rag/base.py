@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Protocol, Any
 
 from app.repository import TelegramPostMediaRepository, TelegramPostRepository
 
@@ -9,6 +9,6 @@ class RAGStrategy(Protocol):
         self.post_media_repository = post_media_repository
         
 
-    async def retrieve(self, query: str, media: bytes | None = None) -> list[str]:
+    async def retrieve(self, query: str, media: bytes | None = None) -> list[Any]:
         ...
 

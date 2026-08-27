@@ -1,6 +1,7 @@
 from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
 from atomic_agents.context import SystemPromptGenerator
 from app.core.config import settings
+from app.models.telegram import TelegramChannel
 from app.repository import TelegramPostMediaRepository, TelegramPostRepository
 from app.schemas import HyDEOutputSchema, TelegramPostSchema
 from app.services.rag.embeddings import EmbeddingService
@@ -19,7 +20,9 @@ class HyDEStrategy:
                 model=settings.rag.llm_model,
                 async_client=True,
                 mode=instructor.Mode.JSON,
-            ), 
+                base_url=settings.rag.llm_base_url,
+            ),
+            model=settings.rag.llm_model.split("/", 1)[-1],
             system_prompt_generator=SystemPromptGenerator(background=[SYSTEM_PROMPT], output_instructions=[OUTPUT_INSTRUCTIONS]),
         )
         self.agent = AtomicAgent[BasicChatInputSchema, HyDEOutputSchema](self.agent_config)
@@ -36,11 +39,17 @@ class HyDEStrategy:
 
         posts = await self.post_repository.find_by_embedding(post_embedding.tolist())
         return [
-            TelegramPostSchema.model_validate(post, extra="ignore")
+            TelegramPostSchema(
+                id=post.id,
+                content=post.content,
+                posted_at=post.posted_at,
+                channel_url=(await self.post_repository.session.get(TelegramChannel, post.channel_id)).url,
+                url=post.url,
+            )
             for post in posts
         ]
 
     async def create_hypothetical_document(self, query: str) -> str:
-        response = await self.agent.run_async(HYDE_PROMPT.format(query=query))
+        response = await self.agent.run_async(BasicChatInputSchema(chat_message=HYDE_PROMPT.format(query=query)))
 
         return response.hypothetical_document

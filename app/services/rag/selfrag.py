@@ -1,6 +1,7 @@
 from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
 from atomic_agents.context import SystemPromptGenerator
 from app.core.config import settings
+from app.models.telegram import TelegramChannel
 from app.repository import TelegramPostMediaRepository, TelegramPostRepository
 from app.schemas import SelfRAGOutputSchema, TelegramPostSchema
 from app.services.rag.embeddings import EmbeddingService
@@ -18,15 +19,19 @@ class SelfRAGStrategy:
                 model=settings.rag.llm_model,
                 async_client=True,
                 mode=instructor.Mode.JSON,
-            ), 
+                base_url=settings.rag.llm_base_url,
+            ),
+            model=settings.rag.llm_model.split("/", 1)[-1],
             system_prompt_generator=SystemPromptGenerator(background=[SYSTEM_PROMPT], output_instructions=[OUTPUT_INSTRUCTIONS]),
         )
         self.agent = AtomicAgent[BasicChatInputSchema, SelfRAGOutputSchema](self.agent_config)
 
     async def retrieve(self, query: str, media: bytes | None = None) -> list[TelegramPostSchema]:
-        refined_query = await self.agent.run_async(SELF_RAG_PROMPT.format(query=query))
+        refined_query = await self.agent.run_async(
+            BasicChatInputSchema(chat_message=SELF_RAG_PROMPT.format(query=query))
+        )
 
-        embedding_text = await EmbeddingService.embed_text(refined_query)
+        embedding_text = await EmbeddingService.embed_text(refined_query.query)
         if media:
             embedding_media = await EmbeddingService.embed_image(media)
         else:
@@ -36,6 +41,12 @@ class SelfRAGStrategy:
 
         posts = await self.post_repository.find_by_embedding(post_embedding.tolist())
         return [
-            TelegramPostSchema.model_validate(post, extra="ignore")
+            TelegramPostSchema(
+                id=post.id,
+                content=post.content,
+                posted_at=post.posted_at,
+                channel_url=(await self.post_repository.session.get(TelegramChannel, post.channel_id)).url,
+                url=post.url,
+            )
             for post in posts
         ]

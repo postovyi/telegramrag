@@ -1,3 +1,4 @@
+from io import BytesIO
 from typing import Any
 
 from PIL import Image
@@ -12,9 +13,9 @@ class EmbeddingService:
 
     @classmethod
     async def embed_text(cls, text: str) -> np.ndarray:
-        return cls.EMBEDDING_MODEL.encode(text)
+        return cls.EMBEDDING_MODEL.encode(text, convert_to_numpy=True)
 
     @classmethod
     async def embed_image(cls, image: Any) -> np.ndarray:
-        img = Image.open(image)
-        return cls.EMBEDDING_MODEL.encode(img)
+        img = Image.open(BytesIO(image) if isinstance(image, bytes) else image)
+        return cls.EMBEDDING_MODEL.encode(img, convert_to_numpy=True)
