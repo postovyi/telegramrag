@@ -7,6 +7,14 @@ services:
       - "${APP_PORT}:${APP_PORT}"
     env_file:
       - .env
+    environment:
+      LLM_BASE_URL: http://host.docker.internal:11434/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./app:/app/app
+      - hf_cache:/root/.cache/huggingface
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT} --reload"
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,3 +48,4 @@ networks:
 
 volumes:
   postgres_data:
+  hf_cache:
