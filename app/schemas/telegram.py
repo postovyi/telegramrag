@@ -1,19 +1,23 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TelegramMedia(BaseModel):
     content: bytes
 
 class TelegramChannelSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     username: str
     url: str
 
 class TelegramPostSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     content: str | None = None
     posted_at: datetime
@@ -21,6 +25,8 @@ class TelegramPostSchema(BaseModel):
     url: str
 
 class TelegramPostMediaSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     post_id: UUID
 
 
