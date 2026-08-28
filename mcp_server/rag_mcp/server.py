@@ -24,7 +24,7 @@ async def retrieve_posts_tool(query: str) -> str:
         return "No relevant posts found."
 
     return "\n".join(
-        f"- [{post['posted_at']}] {post['url']}\n  {post['content']}" for post in posts
+        f"- [{post['posted_at']}] {post['url']}\n  {post['content'] or '(no text)'}" for post in posts
     )
 
 

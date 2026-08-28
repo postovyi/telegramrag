@@ -11,14 +11,14 @@ async def retrieve_posts(query: str, base_url: str) -> list[dict]:
         try:
             response = await client.post("/rag/retrieve", data={"query": query})
             response.raise_for_status()
-        except httpx.ConnectError as exc:
-            raise RagApiError(
-                f"Could not reach RAG API at {base_url}. Is it running? "
-                "Start it with `uv run uvicorn app.main:app` or `docker compose up`."
-            ) from exc
         except httpx.HTTPStatusError as exc:
             raise RagApiError(
                 f"RAG API returned error {exc.response.status_code}: {exc.response.text}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise RagApiError(
+                f"Could not reach RAG API at {base_url}. Is it running? "
+                "Start it with `uv run uvicorn app.main:app` or `docker compose up`."
             ) from exc
 
     return response.json()

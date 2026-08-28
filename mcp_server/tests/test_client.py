@@ -50,6 +50,13 @@ async def test_retrieve_posts_raises_on_connection_error(httpx_mock):
         await retrieve_posts("hello", BASE_URL)
 
 
+async def test_retrieve_posts_raises_on_timeout(httpx_mock):
+    httpx_mock.add_exception(httpx.ReadTimeout("timed out"))
+
+    with pytest.raises(RagApiError, match="Could not reach RAG API"):
+        await retrieve_posts("hello", BASE_URL)
+
+
 async def test_retrieve_posts_raises_on_http_error(httpx_mock):
     httpx_mock.add_response(
         url=f"{BASE_URL}/rag/retrieve",

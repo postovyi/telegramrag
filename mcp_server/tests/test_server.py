@@ -26,6 +26,26 @@ async def test_retrieve_posts_tool_formats_results(monkeypatch):
     assert "https://t.me/pets/42" in result
 
 
+async def test_retrieve_posts_tool_formats_null_content(monkeypatch):
+    async def fake_retrieve_posts(query, base_url):
+        return [
+            {
+                "id": "1",
+                "content": None,
+                "posted_at": "2026-08-01T12:00:00Z",
+                "channel_url": "https://t.me/pets",
+                "url": "https://t.me/pets/42",
+            }
+        ]
+
+    monkeypatch.setattr(server, "retrieve_posts", fake_retrieve_posts)
+
+    result = await server.retrieve_posts_tool("cats")
+
+    assert "(no text)" in result
+    assert "None" not in result
+
+
 async def test_retrieve_posts_tool_handles_empty_results(monkeypatch):
     async def fake_retrieve_posts(query, base_url):
         return []
