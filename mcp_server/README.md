@@ -1,4 +1,4 @@
-# rag-mcp-server
+# telegramrag-mcp-server
 
 Local MCP server exposing telegramrag's RAG retrieval (`POST /rag/retrieve`) as a single MCP tool, `retrieve_posts`.
 
