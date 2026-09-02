@@ -5,11 +5,13 @@ retrieve the most relevant posts for a query through a RAG (Retrieval-Augmented 
 pipeline.
 
 - **Scraping** — Telegram channels/posts are pulled via [Pyrofork](https://github.com/Mayuri-Chan/pyrofork).
-- **Embedding** — post text is embedded with `BAAI/bge-m3` via `sentence-transformers`.
+- **Embedding** — post text is embedded via a configurable provider: local `sentence-transformers`
+  (default, `BAAI/bge-m3`), OpenAI, or Google (`EMBEDDING_PROVIDER` env var).
 - **Storage** — posts and their vector embeddings live in Postgres with [pgvector](https://github.com/pgvector/pgvector).
 - **Retrieval** — three interchangeable RAG strategies: `naive` (default, embeds the query
   directly), `HyDE`, and `Self-RAG` (both LLM-backed, built on `atomic-agents` + `instructor`,
-  against a configurable LLM — defaults to `ollama/gemma4`).
+  against a configurable LLM provider: OpenAI, Google, or any OpenAI-compatible server — Ollama,
+  LM Studio, MLX — via `LLM_PROVIDER`).
 - **MCP server** — a standalone local MCP server (`mcp_server/`) exposes RAG retrieval as an
   MCP tool for use from Claude Desktop, Claude Code, or any other MCP client.
 
@@ -27,6 +29,9 @@ app/
 ├── models/        SQLAlchemy models (TelegramChannel, TelegramPost)
 ├── schemas/       Pydantic schemas (DB-facing, API-facing, scraping-facing)
 └── core/config/   pydantic-settings, one class per concern (db, rag, telegram)
+
+scripts/
+└── clear_embeddings.py   Deletes stored posts before switching embedding provider/model/dimension
 ```
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full architecture breakdown, conventions, and known
@@ -38,7 +43,9 @@ gotchas.
 full containerized stack), a Postgres instance with the `pgvector` extension.
 
 1. Copy `.env.example` to `.env` and fill in `DB_*`, `EMBEDDING_MODEL`, `EMBEDDING_N_DIM`, and
-   `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_SESSION_STRING` at minimum.
+   `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_SESSION_STRING` at minimum. To use OpenAI
+   or Google instead of the local defaults, also set `LLM_PROVIDER`/`LLM_API_KEY` and/or
+   `EMBEDDING_PROVIDER`/`EMBEDDING_API_KEY` — see the comments in `.env.example`.
 2. Install dependencies and run migrations:
 
    ```bash
@@ -88,4 +95,6 @@ uv run ruff check --fix     # lint
 uv run ruff format          # format
 uv run alembic revision --autogenerate -m "message"   # create a migration from model changes
 uv run alembic upgrade head                            # apply migrations
+uv run python scripts/clear_embeddings.py               # delete all posts before switching
+                                                          # EMBEDDING_PROVIDER/MODEL/N_DIM
 ```
