@@ -220,3 +220,9 @@ __marimo__/
 
 # Superpowers (Claude Code skill scratch specs/plans)
 docs/superpowers/
+
+# OpenSpec
+openspec/
+
+# Claude
+.claude/

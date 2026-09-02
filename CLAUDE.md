@@ -51,8 +51,11 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   URL resolution). Three concrete strategies: `naive.py` (default — embeds the raw query directly, no LLM call),
   `hyde.py` (LLM generates a hypothetical document, embeds that), `selfrag.py` (LLM refines the query first).
   All call `TelegramPostRepository.find_by_embedding` (pgvector cosine distance, ascending = most similar first).
-  `embeddings.py` holds `EmbeddingService`, a thin wrapper around a shared `SentenceTransformer` (text only —
-  no image embedding).
+  `embeddings/` holds `EmbeddingService`, dispatching to one of `SentenceTransformerEmbeddingProvider` /
+  `OpenAIEmbeddingProvider` / `GoogleEmbeddingProvider` per `settings.rag.embedding_provider` (text only —
+  no image embedding). `llm_client.py` similarly builds the `instructor` client for HyDE/Self-RAG per
+  `settings.rag.llm_provider` (`openai` / `google` / `openai_compatible` — the latter covers Ollama, LM Studio,
+  MLX server, anything OpenAI-compat, via `LLM_BASE_URL`; `instructor` has no native `mlx` provider string).
 - `app/repository/base.py` — generic `SQLAlchemyRepository[ModelType]` used by all repositories. Filtering uses
   Django-style kwargs: `field__op=value` (e.g. `posted_at__ge=...`), where `op` maps through `action_map` to a
   SQLAlchemy column method (`gt`, `lt`, `ge`, `le`, `in`, `contains`, `eq`, `ne`); a bare `field=value` implies
@@ -109,3 +112,12 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   session — raises `MissingGreenlet`. Fetch related rows explicitly (`session.get(Model, id)`).
 - pgvector `cosine_distance()`: smaller = more similar. Never `order_by(1 - cosine_distance(...))` — that sorts
   least-similar first.
+- `TelegramPost.embedding` is `nullable=False` — there is no way to "clear" an embedding by nulling it; the
+  provided `scripts/clear_embeddings.py` (run when switching `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`/`EMBEDDING_N_DIM`
+  on an existing DB) deletes the `telegram_post` rows outright, not just the vector.
+- Scripts under `scripts/` aren't on the container's import path from cwd `/` — run them as
+  `docker compose exec app sh -c "cd /app && python scripts/foo.py"` (or `uv run python scripts/foo.py` on host).
+- `uv run python -c "..."` locally raises `Extra inputs are not permitted` pydantic-settings errors on `settings` —
+  this is pre-existing/expected outside Docker; verify config-dependent code inside the `app` container instead.
+- After `docker compose up -d` (uvicorn `--reload` mode), the port accepts connections ~10-15s after the
+  container shows "Up" — an immediate curl gets `Empty reply from server` / exit 52, not a real failure.

@@ -1,12 +1,12 @@
+import uvicorn
 from fastapi import FastAPI
 
 from app.api.endpoints import main_router
-import uvicorn
 
 app = FastAPI(
     title="Telegram RAG Service API",
     description="API for scraping, searching, and managing Telegram channels/posts for RAG systems.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.include_router(main_router)

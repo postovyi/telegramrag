@@ -1,5 +1,7 @@
-from .base import BaseConfig
 from pydantic import Field
+
+from .base import BaseConfig
+
 
 class DBConfig(BaseConfig):
     db_host: str = Field(..., alias="DB_HOST")

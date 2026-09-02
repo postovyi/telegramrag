@@ -1,4 +1,3 @@
-import instructor
 from atomic_agents import AgentConfig, AtomicAgent, BasicChatInputSchema
 from atomic_agents.context import SystemPromptGenerator
 
@@ -8,18 +7,14 @@ from app.repository import TelegramPostRepository
 from app.schemas import HyDEOutputSchema, TelegramPostSchema
 from app.services.rag.base import RAGStrategy
 from app.services.rag.embeddings import EmbeddingService
+from app.services.rag.llm_client import build_llm_client
 
 
 class HyDEStrategy(RAGStrategy):
     def __init__(self, post_repository: TelegramPostRepository) -> None:
         super().__init__(post_repository)
         self.agent_config = AgentConfig(
-            client=instructor.from_provider(
-                model=settings.rag.llm_model,
-                async_client=True,
-                mode=instructor.Mode.JSON,
-                base_url=settings.rag.llm_base_url,
-            ),
+            client=build_llm_client(),
             model=settings.rag.llm_model.split('/', 1)[-1],
             system_prompt_generator=SystemPromptGenerator(
                 background=[SYSTEM_PROMPT], output_instructions=[OUTPUT_INSTRUCTIONS]
