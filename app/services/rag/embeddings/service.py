@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.services.rag.embeddings.base import EmbeddingProvider
 from app.services.rag.embeddings.google_provider import GoogleEmbeddingProvider
 from app.services.rag.embeddings.openai_provider import OpenAIEmbeddingProvider
+from app.services.rag.embeddings.openrouter_provider import OpenRouterEmbeddingProvider
 from app.services.rag.embeddings.sentence_transformers_provider import SentenceTransformerEmbeddingProvider
 
 
@@ -22,6 +23,11 @@ def _build_provider() -> EmbeddingProvider:
         if not settings.rag.embedding_api_key:
             raise ValueError('EMBEDDING_API_KEY is required when EMBEDDING_PROVIDER=google')
         return GoogleEmbeddingProvider()
+
+    if provider == 'openrouter':
+        if not settings.rag.embedding_api_key:
+            raise ValueError('EMBEDDING_API_KEY is required when EMBEDDING_PROVIDER=openrouter')
+        return OpenRouterEmbeddingProvider()
 
     raise ValueError(f'Unsupported EMBEDDING_PROVIDER: {provider!r}')
 

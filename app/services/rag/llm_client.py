@@ -26,6 +26,15 @@ def build_llm_client() -> instructor.AsyncInstructor:
             api_key=settings.rag.llm_api_key,
         )
 
+    if provider == 'openrouter':
+        if not settings.rag.llm_api_key:
+            raise ValueError('LLM_API_KEY is required when LLM_PROVIDER=openrouter')
+        return instructor.from_provider(
+            f'openrouter/{settings.rag.llm_model}',
+            async_client=True,
+            api_key=settings.rag.llm_api_key,
+        )
+
     if provider == 'openai_compatible':
         if not settings.rag.llm_base_url:
             raise ValueError('LLM_BASE_URL is required when LLM_PROVIDER=openai_compatible')

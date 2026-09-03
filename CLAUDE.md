@@ -52,10 +52,13 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   `hyde.py` (LLM generates a hypothetical document, embeds that), `selfrag.py` (LLM refines the query first).
   All call `TelegramPostRepository.find_by_embedding` (pgvector cosine distance, ascending = most similar first).
   `embeddings/` holds `EmbeddingService`, dispatching to one of `SentenceTransformerEmbeddingProvider` /
-  `OpenAIEmbeddingProvider` / `GoogleEmbeddingProvider` per `settings.rag.embedding_provider` (text only —
-  no image embedding). `llm_client.py` similarly builds the `instructor` client for HyDE/Self-RAG per
-  `settings.rag.llm_provider` (`openai` / `google` / `openai_compatible` — the latter covers Ollama, LM Studio,
-  MLX server, anything OpenAI-compat, via `LLM_BASE_URL`; `instructor` has no native `mlx` provider string).
+  `OpenAIEmbeddingProvider` / `GoogleEmbeddingProvider` / `OpenRouterEmbeddingProvider` per
+  `settings.rag.embedding_provider` (text only — no image embedding). `llm_client.py` similarly builds the
+  `instructor` client for HyDE/Self-RAG per `settings.rag.llm_provider` (`openai` / `google` /
+  `openai_compatible` / `openrouter` — `openai_compatible` covers Ollama, LM Studio, MLX server, anything
+  OpenAI-compat, via `LLM_BASE_URL`; `instructor` has no native `mlx` provider string; `openrouter` uses
+  `instructor`'s own native `openrouter` provider branch — one API key/base URL routing to many hosted models,
+  `LLM_MODEL`/`EMBEDDING_MODEL` take OpenRouter's `provider/model` naming, e.g. `openai/gpt-4o-mini`).
 - `app/repository/base.py` — generic `SQLAlchemyRepository[ModelType]` used by all repositories. Filtering uses
   Django-style kwargs: `field__op=value` (e.g. `posted_at__ge=...`), where `op` maps through `action_map` to a
   SQLAlchemy column method (`gt`, `lt`, `ge`, `le`, `in`, `contains`, `eq`, `ne`); a bare `field=value` implies
