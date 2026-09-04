@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy.exc import NoResultFound
+
 from app.models.telegram import TelegramChannel
 from app.repository import TelegramChannelRepository, TelegramPostRepository
 from app.schemas import (
@@ -73,6 +75,29 @@ class TelegramService:
         if existing is not None:
             return existing
         return await self.channel_repository.create(channel)
+
+    async def get_or_fetch_channel_by_username(self, username: str) -> TelegramChannelSchema:
+        existing = await self.channel_repository.get_one_or_none(username=username)
+        if existing is not None:
+            return TelegramChannelSchema.model_validate(existing, extra='ignore')
+
+        try:
+            async with self.pyrogram_service:
+                scraped = await self.pyrogram_service.get_channel(username)
+        except Exception as err:
+            raise NoResultFound(f'Telegram channel with username {username!r} not found.') from err
+
+        db_channel = await self.channel_repository.create(scraped)
+        return TelegramChannelSchema.model_validate(db_channel, extra='ignore')
+
+    async def get_or_fetch_channels_by_usernames(self, usernames: list[str]) -> list[TelegramChannelSchema]:
+        results: list[TelegramChannelSchema] = []
+        for username in usernames:
+            try:
+                results.append(await self.get_or_fetch_channel_by_username(username))
+            except NoResultFound:
+                continue
+        return results
 
     async def import_channels(self, data: PyrogramImportChannelsSchema) -> list[TelegramChannelSchema]:
         async with self.pyrogram_service:

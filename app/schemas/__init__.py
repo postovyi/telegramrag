@@ -2,6 +2,7 @@ from .rag import HyDEOutputSchema, RAGInputSchema, SelfRAGOutputSchema
 from .telegram import (
     CreateTelegramChannelSchema,
     CreateTelegramPostSchema,
+    FetchTelegramChannelsByUsernamesSchema,
     PyrogramImportChannelsSchema,
     PyrogramImportPostsSchema,
     ScrapedTelegramPostSchema,
@@ -14,6 +15,7 @@ from .telegram import (
 __all__ = [
     'CreateTelegramChannelSchema',
     'CreateTelegramPostSchema',
+    'FetchTelegramChannelsByUsernamesSchema',
     'HyDEOutputSchema',
     'PyrogramImportChannelsSchema',
     'PyrogramImportPostsSchema',
