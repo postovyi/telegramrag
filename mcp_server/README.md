@@ -1,6 +1,6 @@
 # telegramrag-mcp-server
 
-Local MCP server exposing telegramrag's RAG retrieval (`POST /rag/retrieve`) as a single MCP tool, `retrieve_posts`.
+Local MCP server exposing telegramrag's RAG retrieval and live Telegram preview endpoints as MCP tools.
 
 ## Requirements
 
@@ -42,6 +42,8 @@ Add to your MCP client's config (e.g. `claude_desktop_config.json`):
 }
 ```
 
-## Tool
+## Tools
 
-- `retrieve_posts(query: str)` — returns Telegram posts relevant to `query`, retrieved via the configured RAG strategy on the telegramrag API.
+- `retrieve_posts(query: str)` — returns Telegram posts relevant to `query`, retrieved via the configured RAG strategy on the telegramrag API. Reads from the database.
+- `fetch_posts_by_username(username: str, start_date: str, end_date: str)` — scrapes a channel's posts (text only) within a date range live via Telegram. Not persisted to the database, unrelated to `retrieve_posts`.
+- `search_channels_by_keywords(keywords: str)` — searches public Telegram channels by keyword live via Telegram, returns name/username/subscriber count sorted by subscriber count descending. Result count is fixed server-side (`TELEGRAM_CHANNEL_SEARCH_LIMIT`). Not persisted to the database.
