@@ -41,6 +41,12 @@ class CreateTelegramChannelSchema(BaseModel):
     url: str
 
 
+class TelegramChannelPreviewSchema(BaseModel):
+    name: str
+    username: str
+    subscribers_count: int
+
+
 class CreateTelegramPostSchema(BaseModel):
     content: str | None = None
     posted_at: datetime

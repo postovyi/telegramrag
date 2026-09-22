@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,6 +11,8 @@ from app.schemas import (
     FetchTelegramChannelsByUsernamesSchema,
     PyrogramImportChannelsSchema,
     PyrogramImportPostsSchema,
+    ScrapedTelegramPostSchema,
+    TelegramChannelPreviewSchema,
     TelegramChannelSchema,
     TelegramPostSchema,
 )
@@ -59,6 +62,19 @@ async def get_channels_by_usernames(
     return await service.get_or_fetch_channels_by_usernames(usernames_in.usernames)
 
 
+@router.get('/channels/search-by-keywords', response_model=list[TelegramChannelPreviewSchema])
+async def search_channels_by_keywords(
+    keywords: str,
+    service: TelegramService = Depends(get_telegram_service),
+) -> list[TelegramChannelPreviewSchema]:
+    """Search public Telegram channels by keyword, live, without persisting to the database.
+
+    Returns name/username/subscriber count, sorted by subscriber count descending, capped by
+    the server-side ``TELEGRAM_CHANNEL_SEARCH_LIMIT`` config value.
+    """
+    return await service.search_channels_preview(keywords)
+
+
 @router.get('/channels/{channel_id}', response_model=TelegramChannelSchema)
 async def get_channel(
     channel_id: UUID,
@@ -71,6 +87,23 @@ async def get_channel(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f'Telegram channel with ID {channel_id} not found.',
+        ) from err
+
+
+@router.get('/posts/by-username', response_model=list[ScrapedTelegramPostSchema])
+async def get_posts_by_username(
+    username: str,
+    start_date: datetime,
+    end_date: datetime,
+    service: TelegramService = Depends(get_telegram_service),
+) -> list[ScrapedTelegramPostSchema]:
+    """Scrape a channel's posts within a date range by username, live, without persisting to the database."""
+    try:
+        return await service.fetch_posts_by_username(username, start_date, end_date)
+    except NoResultFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Telegram channel with username {username!r} not found.',
         ) from err
 
 

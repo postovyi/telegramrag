@@ -10,7 +10,12 @@ from pyrogram.raw.types import Channel as RawChannel
 from pyrogram.types import Chat, Message
 
 from app.core.config import settings
-from app.schemas import CreateTelegramChannelSchema, ScrapedTelegramPostSchema, TelegramMedia
+from app.schemas import (
+    CreateTelegramChannelSchema,
+    ScrapedTelegramPostSchema,
+    TelegramChannelPreviewSchema,
+    TelegramMedia,
+)
 
 
 class PyrogramService:
@@ -67,6 +72,37 @@ class PyrogramService:
             )
 
         return channels
+
+    async def search_channels_with_subscribers(self, keywords: str, limit: int) -> list[TelegramChannelPreviewSchema]:
+        """Search public channels by ``keywords`` and return each with a reliable subscriber count.
+
+        The raw ``contacts.search`` response (also used by ``search_channels``) carries an
+        optional ``participants_count`` field that Telegram does not reliably populate, so this
+        looks up each candidate's ``members_count`` via ``get_chat`` instead. Calls are made
+        sequentially (not concurrently) to avoid tripping flood-wait on the shared client session.
+        Candidates whose ``get_chat`` lookup fails are skipped. Results are sorted by
+        ``subscribers_count`` descending and capped at ``limit``.
+        """
+        found = await self.client.invoke(Search(q=keywords, limit=limit))
+
+        previews: list[TelegramChannelPreviewSchema] = []
+        for chat in found.chats:
+            if not isinstance(chat, RawChannel) or not chat.broadcast or not chat.username:
+                continue
+            try:
+                full_chat = await self.client.get_chat(chat.username)
+            except Exception:  # noqa: S112 -- best-effort preview, skip candidates get_chat can't resolve
+                continue
+            previews.append(
+                TelegramChannelPreviewSchema(
+                    name=chat.title,
+                    username=chat.username,
+                    subscribers_count=full_chat.members_count or 0,
+                )
+            )
+
+        previews.sort(key=lambda preview: preview.subscribers_count, reverse=True)
+        return previews[:limit]
 
     async def get_channel(self, username: str) -> CreateTelegramChannelSchema:
         """Fetch a single channel's info by username/link."""

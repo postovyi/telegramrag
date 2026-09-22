@@ -1,7 +1,9 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.exc import NoResultFound
 
+from app.core.config import settings
 from app.models.telegram import TelegramChannel
 from app.repository import TelegramChannelRepository, TelegramPostRepository
 from app.schemas import (
@@ -10,6 +12,8 @@ from app.schemas import (
     PyrogramImportChannelsSchema,
     PyrogramImportPostsSchema,
     RAGInputSchema,
+    ScrapedTelegramPostSchema,
+    TelegramChannelPreviewSchema,
     TelegramChannelSchema,
     TelegramPostInputSchema,
     TelegramPostSchema,
@@ -98,6 +102,23 @@ class TelegramService:
             except NoResultFound:
                 continue
         return results
+
+    async def fetch_posts_by_username(
+        self, username: str, start_date: datetime, end_date: datetime
+    ) -> list[ScrapedTelegramPostSchema]:
+        """Scrape a channel's posts in a date range by username, live, without persisting to the DB."""
+        try:
+            async with self.pyrogram_service:
+                return await self.pyrogram_service.fetch_posts(username, start_date, end_date, download_media=False)
+        except Exception as err:
+            raise NoResultFound(f'Telegram channel with username {username!r} not found.') from err
+
+    async def search_channels_preview(self, keywords: str) -> list[TelegramChannelPreviewSchema]:
+        """Search public channels by keyword, live, without persisting to the DB."""
+        async with self.pyrogram_service:
+            return await self.pyrogram_service.search_channels_with_subscribers(
+                keywords, limit=settings.telegram.channel_search_limit
+            )
 
     async def import_channels(self, data: PyrogramImportChannelsSchema) -> list[TelegramChannelSchema]:
         async with self.pyrogram_service:
