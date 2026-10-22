@@ -38,3 +38,7 @@ class EmbeddingService:
     @classmethod
     async def embed_text(cls, text: str) -> np.ndarray:
         return await cls.PROVIDER.embed_text(text)
+
+    @classmethod
+    async def embed_image(cls, data: bytes, mime_type: str) -> np.ndarray:
+        return await cls.PROVIDER.embed_image(data, mime_type)
