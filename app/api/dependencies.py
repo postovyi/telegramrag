@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.database import async_session_maker
-from app.repository import TelegramChannelRepository, TelegramPostRepository
+from app.repository import TelegramChannelRepository, TelegramPostMediaRepository, TelegramPostRepository
 from app.services.pyrogram import PyrogramService
 from app.services.rag.hyde import HyDEStrategy
 from app.services.rag.naive import NaiveRAGStrategy
@@ -50,10 +50,11 @@ def get_telegram_rag_service(
 ) -> TelegramRAGService:
     """Dependency that creates and returns a TelegramRAGService with the specified strategy."""
     post_repo = TelegramPostRepository(session)
+    media_repo = TelegramPostMediaRepository(session)
     if settings.rag.rag_strategy == 'hyde':
-        strategy = HyDEStrategy(post_repo)
+        strategy = HyDEStrategy(post_repo, media_repo)
     elif settings.rag.rag_strategy == 'selfrag':
-        strategy = SelfRAGStrategy(post_repo)
+        strategy = SelfRAGStrategy(post_repo, media_repo)
     else:
-        strategy = NaiveRAGStrategy(post_repo)
+        strategy = NaiveRAGStrategy(post_repo, media_repo)
     return TelegramRAGService(strategy)

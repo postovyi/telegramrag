@@ -12,6 +12,7 @@ from app.schemas import (
     PyrogramImportChannelsSchema,
     PyrogramImportPostsSchema,
     RAGInputSchema,
+    RetrievedItemSchema,
     ScrapedTelegramPostSchema,
     TelegramChannelPreviewSchema,
     TelegramChannelSchema,
@@ -159,5 +160,5 @@ class TelegramRAGService:
     def __init__(self, strategy: RAGStrategy) -> None:
         self.strategy = strategy
 
-    async def retrieve(self, data: RAGInputSchema) -> list[TelegramPostSchema]:
+    async def retrieve(self, data: RAGInputSchema) -> list[RetrievedItemSchema]:
         return await self.strategy.retrieve(data.query, data.media)

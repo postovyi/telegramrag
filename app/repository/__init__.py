@@ -1,3 +1,3 @@
-from .telegram import TelegramChannelRepository, TelegramPostRepository
+from .telegram import TelegramChannelRepository, TelegramPostMediaRepository, TelegramPostRepository
 
-__all__ = ["TelegramChannelRepository", "TelegramPostRepository"]
+__all__ = ['TelegramChannelRepository', 'TelegramPostMediaRepository', 'TelegramPostRepository']

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +26,18 @@ class TelegramPostSchema(BaseModel):
     posted_at: datetime
     channel_url: str
     url: str
+
+
+class RetrievedItemSchema(BaseModel):
+    kind: Literal['post', 'image']
+    post_id: UUID
+    media_id: UUID | None = None
+    media_url: str | None = None
+    content: str | None = None
+    posted_at: datetime
+    channel_url: str
+    url: str
+    distance: float
 
 
 class ScrapedTelegramPostSchema(BaseModel):
