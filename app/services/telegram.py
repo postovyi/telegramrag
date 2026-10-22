@@ -64,6 +64,12 @@ class TelegramService:
             id=post.id, content=post.content, posted_at=post.posted_at, channel_url=channel.url, url=post.url
         )
 
+    async def get_media(self, media_id: UUID) -> tuple[bytes, str]:
+        media = await self.media_repository.get_data(media_id)
+        if media is None:
+            raise NoResultFound(f'Telegram media with ID {media_id} not found.')
+        return media
+
     async def get_channels(self) -> list[TelegramChannelSchema]:
         channels = await self.channel_repository.get_multi(0, None)
         return [TelegramChannelSchema.model_validate(channel, extra='ignore') for channel in channels]

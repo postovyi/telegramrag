@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import NoResultFound
 
 from app.api.dependencies import get_telegram_service
@@ -120,6 +120,22 @@ async def get_post(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f'Telegram post with ID {post_id} not found.',
         ) from err
+
+
+@router.get('/media/{media_id}', response_class=Response, responses={200: {'content': {'image/jpeg': {}}}})
+async def get_media(
+    media_id: UUID,
+    service: TelegramService = Depends(get_telegram_service),
+) -> Response:
+    """Return the raw bytes of a stored post image (use `media_id`/`media_url` from `/rag/retrieve` items)."""
+    try:
+        data, mime_type = await service.get_media(media_id)
+    except NoResultFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Telegram media with ID {media_id} not found.',
+        ) from err
+    return Response(content=data, media_type=mime_type)
 
 
 @router.post('/posts', response_model=TelegramPostSchema, status_code=status.HTTP_201_CREATED)
