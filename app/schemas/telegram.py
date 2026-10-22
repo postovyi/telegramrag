@@ -1,12 +1,26 @@
+import base64
+import binascii
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class TelegramMedia(BaseModel):
     content: bytes
+    mime_type: str = 'image/jpeg'
+
+    @field_validator('content', mode='before')
+    @classmethod
+    def decode_base64_content(cls, value: object) -> object:
+        """JSON cannot carry raw bytes: accept a base64 string and decode it (raw bytes pass through)."""
+        if isinstance(value, str):
+            try:
+                return base64.b64decode(value, validate=True)
+            except binascii.Error as err:
+                raise ValueError('content must be valid base64') from err
+        return value
 
 
 class TelegramChannelSchema(BaseModel):
@@ -69,7 +83,7 @@ class CreateTelegramPostSchema(BaseModel):
 
 
 class TelegramPostInputSchema(CreateTelegramPostSchema):
-    embedding: list[float]
+    embedding: list[float] | None = None
 
 
 class PyrogramImportChannelsSchema(BaseModel):

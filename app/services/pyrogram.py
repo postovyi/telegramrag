@@ -157,7 +157,7 @@ class PyrogramService:
         if download_media and message.photo is not None:
             buffer = await self.client.download_media(message, in_memory=True)
             if isinstance(buffer, BytesIO):
-                media.append(TelegramMedia(content=buffer.getvalue()))
+                media.append(TelegramMedia(content=buffer.getvalue(), mime_type='image/jpeg'))
 
         return ScrapedTelegramPostSchema(
             content=message.text or message.caption,

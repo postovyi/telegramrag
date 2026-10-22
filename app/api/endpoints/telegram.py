@@ -16,7 +16,7 @@ from app.schemas import (
     TelegramChannelSchema,
     TelegramPostSchema,
 )
-from app.services.telegram import TelegramService
+from app.services.telegram import NothingToEmbedError, TelegramService
 
 router = APIRouter(prefix='/telegram', tags=['telegram'])
 
@@ -128,7 +128,10 @@ async def create_post(
     service: TelegramService = Depends(get_telegram_service),
 ) -> TelegramPostSchema:
     """Manually add/create a Telegram post to the database, including media embeddings if provided."""
-    return await service.create_post(post_in)
+    try:
+        return await service.create_post(post_in)
+    except NothingToEmbedError as err:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)) from err
 
 
 @router.post('/import/channels', response_model=list[TelegramChannelSchema], status_code=status.HTTP_201_CREATED)

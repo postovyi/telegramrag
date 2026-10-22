@@ -38,9 +38,11 @@ def get_telegram_service(
     """Dependency that creates and returns a TelegramService with all required repositories."""
     channel_repo = TelegramChannelRepository(session)
     post_repo = TelegramPostRepository(session)
+    media_repo = TelegramPostMediaRepository(session)
     return TelegramService(
         channel_repository=channel_repo,
         post_repository=post_repo,
+        media_repository=media_repo,
         pyrogram_service=pyrogram_service,
     )
 

@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import datetime
 from uuid import UUID
 
@@ -5,7 +7,7 @@ from sqlalchemy.exc import NoResultFound
 
 from app.core.config import settings
 from app.models.telegram import TelegramChannel
-from app.repository import TelegramChannelRepository, TelegramPostRepository
+from app.repository import TelegramChannelRepository, TelegramPostMediaRepository, TelegramPostRepository
 from app.schemas import (
     CreateTelegramChannelSchema,
     CreateTelegramPostSchema,
@@ -16,6 +18,7 @@ from app.schemas import (
     ScrapedTelegramPostSchema,
     TelegramChannelPreviewSchema,
     TelegramChannelSchema,
+    TelegramMedia,
     TelegramPostInputSchema,
     TelegramPostSchema,
 )
@@ -25,15 +28,28 @@ from app.services.rag.base import RAGStrategy
 from .rag import EmbeddingService
 
 
+logger = logging.getLogger(__name__)
+
+IMAGE_EMBEDDING_CONCURRENCY = 4
+IMAGE_EMBEDDING_ATTEMPTS = 3
+IMAGE_EMBEDDING_BACKOFF_SECONDS = 1.0
+
+
+class NothingToEmbedError(ValueError):
+    """A post has no text and none of its images could be embedded."""
+
+
 class TelegramService:
     def __init__(
         self,
         channel_repository: TelegramChannelRepository,
         post_repository: TelegramPostRepository,
+        media_repository: TelegramPostMediaRepository,
         pyrogram_service: PyrogramService,
     ) -> None:
         self.channel_repository = channel_repository
         self.post_repository = post_repository
+        self.media_repository = media_repository
         self.pyrogram_service = pyrogram_service
 
     async def get_channel(self, channel_id: UUID) -> TelegramChannelSchema:
@@ -56,16 +72,51 @@ class TelegramService:
         channel = await self.channel_repository.create(channel)
         return TelegramChannelSchema.model_validate(channel, extra='ignore')
 
+    async def _embed_image_with_retry(self, image: TelegramMedia, semaphore: asyncio.Semaphore) -> list[float] | None:
+        async with semaphore:
+            for attempt in range(1, IMAGE_EMBEDDING_ATTEMPTS + 1):
+                try:
+                    return (await EmbeddingService.embed_image(image.content, image.mime_type)).tolist()
+                except NotImplementedError:
+                    raise
+                except Exception:
+                    if attempt == IMAGE_EMBEDDING_ATTEMPTS:
+                        logger.exception('Image embedding failed after %d attempts, skipping image', attempt)
+                        return None
+                    await asyncio.sleep(IMAGE_EMBEDDING_BACKOFF_SECONDS * 2 ** (attempt - 1))
+        return None
+
+    async def _embed_images(self, media: list[TelegramMedia]) -> list[tuple[int, TelegramMedia, list[float]]]:
+        """Embed each image on its own (bounded concurrency); images that fail are skipped and logged."""
+        semaphore = asyncio.Semaphore(IMAGE_EMBEDDING_CONCURRENCY)
+        vectors = await asyncio.gather(*(self._embed_image_with_retry(image, semaphore) for image in media))
+        return [(position, image, vector) for position, (image, vector) in enumerate(zip(media, vectors)) if vector]
+
     async def create_post(self, post: CreateTelegramPostSchema) -> TelegramPostSchema:
+        embedded_media = await self._embed_images(post.media or [])
+        has_text = bool(post.content and post.content.strip())
+        if not has_text and not embedded_media:
+            raise NothingToEmbedError('Post has no text and no embeddable images.')
+
         db_post = await self.post_repository.create(
             TelegramPostInputSchema(
                 content=post.content,
                 posted_at=post.posted_at,
                 channel_id=post.channel_id,
                 url=post.url,
-                embedding=await EmbeddingService.embed_text(post.content),
+                embedding=(await EmbeddingService.embed_text(post.content)).tolist() if has_text else None,
             )
         )
+        for position, image, vector in embedded_media:
+            await self.media_repository.create(
+                {
+                    'post_id': db_post.id,
+                    'position': position,
+                    'data': image.content,
+                    'mime_type': image.mime_type,
+                    'embedding': vector,
+                }
+            )
         channel = await self.channel_repository.get_one(id=post.channel_id)
         return TelegramPostSchema(
             id=db_post.id,
@@ -140,19 +191,22 @@ class TelegramService:
 
         stored: list[TelegramPostSchema] = []
         for post in scraped:
-            if not post.content:
+            if not post.content and not post.media:
                 continue
-            stored.append(
-                await self.create_post(
-                    CreateTelegramPostSchema(
-                        content=post.content,
-                        posted_at=post.posted_at,
-                        channel_id=db_channel.id,
-                        url=post.url,
-                        media=post.media,
+            try:
+                stored.append(
+                    await self.create_post(
+                        CreateTelegramPostSchema(
+                            content=post.content,
+                            posted_at=post.posted_at,
+                            channel_id=db_channel.id,
+                            url=post.url,
+                            media=post.media,
+                        )
                     )
                 )
-            )
+            except NothingToEmbedError:
+                logger.warning('Skipping post %s: image-only and no image could be embedded', post.url)
         return stored
 
 
