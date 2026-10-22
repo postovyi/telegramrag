@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 FastAPI service that scrapes Telegram channels/posts (via Pyrofork), embeds post text (via `BAAI/bge-m3` through
 sentence-transformers), stores them in Postgres/pgvector, and retrieves relevant posts through RAG strategies
 (`naive`, HyDE, Self-RAG) — HyDE/Self-RAG built on `atomic-agents` + `instructor`, backed by a configurable LLM
-(default `ollama/gemma4`). Image embedding was removed (see Gotchas) — media is scraped but not embedded/searched.
+(default `ollama/gemma4`). Post photos are embedded too (multimodal model, e.g. `google/gemini-embedding-2` via OpenRouter) and stored as
+media rows; retrieval returns posts and images in one list (images get reserved slots).
 
 ## Commands
 
@@ -47,13 +48,15 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   plain schemas that map onto `TelegramService` create inputs — no DB access here. Channel search
   (`search_channels`) uses the raw `contacts.search` Telegram API, not `search_global`/`search_chats` — those
   only search chats the account already belongs to.
-- `app/services/rag/` — `RAGStrategy` base class (`base.py`) holds shared helpers (`_to_post_schemas`, channel
-  URL resolution). Three concrete strategies: `naive.py` (default — embeds the raw query directly, no LLM call),
+- `app/services/rag/` — `RAGStrategy` base class (`base.py`) holds shared helpers (`_search`: unified
+  post+image top-k). Three concrete strategies: `naive.py` (default — embeds the raw query directly, no LLM call),
   `hyde.py` (LLM generates a hypothetical document, embeds that), `selfrag.py` (LLM refines the query first).
-  All call `TelegramPostRepository.find_by_embedding` (pgvector cosine distance, ascending = most similar first).
+  All end in `_search` → `TelegramPostRepository.find_by_embedding` + `TelegramPostMediaRepository.find_by_embedding`
+  (pgvector cosine distance, ascending = most similar first; both return `(row, distance)` pairs).
   `embeddings/` holds `EmbeddingService`, dispatching to one of `SentenceTransformerEmbeddingProvider` /
   `OpenAIEmbeddingProvider` / `GoogleEmbeddingProvider` / `OpenRouterEmbeddingProvider` per
-  `settings.rag.embedding_provider` (text only — no image embedding). `llm_client.py` similarly builds the
+  `settings.rag.embedding_provider` (`embed_text` everywhere; `embed_image` only on the `openrouter` provider —
+  others raise `ImageEmbeddingNotSupportedError`; OpenRouter gets `dimensions=EMBEDDING_N_DIM`). `llm_client.py` similarly builds the
   `instructor` client for HyDE/Self-RAG per `settings.rag.llm_provider` (`openai` / `google` /
   `openai_compatible` / `openrouter` — `openai_compatible` covers Ollama, LM Studio, MLX server, anything
   OpenAI-compat, via `LLM_BASE_URL`; `instructor` has no native `mlx` provider string; `openrouter` uses
@@ -66,11 +69,13 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   all matching rows unpaginated. `create()` filters the input dict down to the model's actual table columns
   before `insert().values()` — passing extra fields (e.g. from a schema with unrelated fields) silently corrupts
   the generated SQL otherwise.
-- `app/repository/telegram.py` — `TelegramPostRepository.find_by_embedding()` (pgvector cosine-distance
-  ascending, capped at `settings.rag.top_k`).
-- `app/models/` — SQLAlchemy declarative models (`TelegramChannel`, `TelegramPost`), UUID-keyed via `BaseId`.
-  `TelegramPost.embedding` is a `pgvector` `Vector` column sized by `settings.rag.embedding_n_dim` (1024 for
-  `bge-m3`). There is no media/image table — removed along with image embedding.
+- `app/repository/telegram.py` — `find_by_embedding()` on the post and media repositories (pgvector cosine-distance
+  ascending, capped at `settings.rag.top_k`, rows returned with their distance); `get_data(media_id)` reads image bytes.
+- `app/models/` — SQLAlchemy declarative models (`TelegramChannel`, `TelegramPost`, `TelegramPostMedia`), UUID-keyed via `BaseId`.
+  `TelegramPost.embedding` and `TelegramPostMedia.embedding` are `pgvector` `Vector` columns sized by
+  `settings.rag.embedding_n_dim`; the post vector is nullable (image-only posts). `TelegramPostMedia` holds the photo
+  `data` (bytea, `deferred` — never loaded by searches), `mime_type`, `position`, and `post_id` FK (`ON DELETE CASCADE`).
+  Image bytes are served by `GET /telegram/media/{media_id}`; retrieval only returns `media_id`/`media_url`.
 - `app/schemas/` — Pydantic schemas, split between DB-facing (`TelegramPostInputSchema`, etc.), API-facing
   (`TelegramPostSchema`, `CreateTelegramChannelSchema`, ...), and Pyrogram-scraping schemas
   (`ScrapedTelegramPostSchema`, `PyrogramImportChannelsSchema`, ...). API-facing schemas need
@@ -80,8 +85,8 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
 - `alembic/` — migrations run on the async engine (`async_engine_from_config` + `connection.run_sync`, not a
   sync `engine_from_config`) since the DB URL is `postgresql+asyncpg://`. `env.py` pulls the URL from
   `settings.db.database_url` and metadata from `app.models.Base`, so `.env` must be populated before running
-  alembic commands. History is kept squashed to a single `0001_init_telegram` migration reflecting current
-  schema — this is a solo/dev project, prefer squashing over accumulating incidental-edit migrations.
+  alembic commands. `0001_init_telegram` is the squashed base; `0002_post_media` adds the media table and makes the post vector
+  nullable (it also deletes post rows and resizes the vector column to the current `EMBEDDING_N_DIM`).
 
 ## Conventions
 
@@ -115,9 +120,18 @@ Layering is strict: **API → Service → Repository → Model**, each only talk
   session — raises `MissingGreenlet`. Fetch related rows explicitly (`session.get(Model, id)`).
 - pgvector `cosine_distance()`: smaller = more similar. Never `order_by(1 - cosine_distance(...))` — that sorts
   least-similar first.
-- `TelegramPost.embedding` is `nullable=False` — there is no way to "clear" an embedding by nulling it; the
-  provided `scripts/clear_embeddings.py` (run when switching `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`/`EMBEDDING_N_DIM`
-  on an existing DB) deletes the `telegram_post` rows outright, not just the vector.
+- `TelegramPostMedia.embedding` is `NOT NULL`; `scripts/clear_embeddings.py` (run when switching
+  `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`/`EMBEDDING_N_DIM` on an existing DB) deletes media rows and then post rows
+  outright, not just the vectors. The vector column dimension itself changes only via a migration run after the
+  new `EMBEDDING_N_DIM` is in `.env` (`alembic downgrade -1 && alembic upgrade head` re-sizes `0002`).
+- Gemini embedding via OpenRouter: image input is `input=[{'content': [{'type': 'image_url', 'image_url': {'url':
+  'data:image/jpeg;base64,...'}}]}]` with `encoding_format='float'`; text and image vectors share one space, but
+  cross-modal distance (~0.55-0.66 relevant, 0.73+ irrelevant) is systematically higher than text-text, so a plain
+  distance merge would never surface an image. `_search` therefore gives images reserved slots (`MEDIA_TOP_K`, default 3)
+  within `MEDIA_MAX_DISTANCE` (default 0.68, calibrated on few samples — retune after changing the embedding model),
+  and fills the rest of `TOP_K` with posts.
+- Images are handled in memory only (Pyrogram `in_memory=True` → embed → bytea); a client such as Claude Code that
+  wants to *see* an image saves `/telegram/media/{id}` to a temp file and opens it.
 - Scripts under `scripts/` aren't on the container's import path from cwd `/` — run them as
   `docker compose exec app sh -c "cd /app && python scripts/foo.py"` (or `uv run python scripts/foo.py` on host).
 - `uv run python -c "..."` locally raises `Extra inputs are not permitted` pydantic-settings errors on `settings` —
